@@ -1,5 +1,5 @@
 import { AbstractFulfillmentProviderService } from "@medusajs/framework/utils"
-import { CalculatedShippingOptionPrice, CalculateShippingOptionPriceDTO, CartLineItemDTO, CreateShippingOptionDTO, FulfillmentOption } from "@medusajs/framework/types"
+import { CalculatedShippingOptionPrice, CalculateShippingOptionPriceDTO, CartLineItemDTO, CreateFulfillmentResult, CreateShippingOptionDTO, FulfillmentDTO, FulfillmentItemDTO, FulfillmentOption, FulfillmentOrderDTO } from "@medusajs/framework/types"
 import Austpost from "./Austpost"
 
 type Options = {
@@ -133,6 +133,23 @@ class AustPostFulfillmentProviderService extends AbstractFulfillmentProviderServ
             ...data
         }
     }
+
+    async createFulfillment(
+        data: object,
+        items: object[],
+        order: object | undefined,
+        fulfillment: Record<string, unknown>
+    ): Promise<any> {
+        // TODO: Add support for getting fulfillment data
+        return {
+            data: {
+                ...(fulfillment.data as object || {}),
+                label_id: "",
+                shipment_id: "",
+            }
+        }
+    }
+
 }
 
 export default AustPostFulfillmentProviderService
