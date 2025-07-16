@@ -1,5 +1,5 @@
 import { AbstractFulfillmentProviderService } from "@medusajs/framework/utils"
-import { CalculatedShippingOptionPrice, CalculateShippingOptionPriceDTO, CreateShippingOptionDTO, FulfillmentOption } from "@medusajs/framework/types"
+import { CalculatedShippingOptionPrice, CalculateShippingOptionPriceDTO, CartLineItemDTO, CreateShippingOptionDTO, FulfillmentOption } from "@medusajs/framework/types"
 import Austpost from "./Austpost"
 
 type Options = {
@@ -25,37 +25,54 @@ class AustPostFulfillmentProviderService extends AbstractFulfillmentProviderServ
     ): Promise<CalculatedShippingOptionPrice> {
         const toPostCode = context.shipping_address?.postal_code
         const fromPostCode = context.from_location?.address?.postal_code
-        // TODO: Support international shipping here        
+        const destinationCountry = context.shipping_address?.country_code
         const serviceCodeId = (optionData as { id: string }).id;
-
-        if(!toPostCode){
-            throw Error("Destination postal code not found")
-        }
-        if(!fromPostCode){
-            throw Error("Origin postal code not found")
-        }
-
         const packageWeight = context.items.reduce((sum, item) => {
             // @ts-ignore
             return sum + (item.variant.weight || 0)
         }, 0)
 
-        const packageHeight = context.items.reduce((sum, item) => {
+        let totalShippingPrice: number | null = null
+        if(fromPostCode && toPostCode && destinationCountry == "au"){
+            totalShippingPrice = await this.calculateDomesticPrice(toPostCode, fromPostCode, serviceCodeId, packageWeight, context.items)
+        }
+
+        if (destinationCountry && destinationCountry != "au"){
+            const internationPrice = await this.client.calculateInternationalShipping({
+                countryCode: destinationCountry,
+                weight: packageWeight,
+                serviceCode: serviceCodeId
+            })
+            totalShippingPrice = Number(internationPrice)
+        }
+
+        if (totalShippingPrice == null){
+            throw new Error("Unable to get shipping price from Australia Post. Make sure your warehouse has a postcode and country code.")
+        }
+
+        return {
+            calculated_amount: totalShippingPrice,
+            is_calculated_price_tax_inclusive: true,
+        }
+    }
+
+    private async calculateDomesticPrice(toPostCode: string, fromPostCode: string, serviceCodeId: string, packageWeight: number, items: CartLineItemDTO[]){
+        const packageHeight = items.reduce((sum, item) => {
             // @ts-ignore
             return sum + (item.variant.height || 0)
         }, 0)
 
-        const packageLength = context.items.reduce((sum, item) => {
+        const packageLength = items.reduce((sum, item) => {
             // @ts-ignore
             return sum + (item.variant.length || 0)
         }, 0)
 
-        const packageWidth = context.items.reduce((sum, item) => {
+        const packageWidth = items.reduce((sum, item) => {
             // @ts-ignore
             return sum + (item.variant.width || 0)
         }, 0)
 
-        
+
         const domesticShippingResponse = await this.client.calculateDomesticShipping({
             height: packageHeight,
             length: packageLength,
@@ -67,27 +84,41 @@ class AustPostFulfillmentProviderService extends AbstractFulfillmentProviderServ
         })
 
         const totalCost = domesticShippingResponse.postage_result.total_cost
-        
-        return {
-            calculated_amount: Number(totalCost),
-            is_calculated_price_tax_inclusive: true,
-        }
+        return Number(totalCost)
     }
 
     async getFulfillmentOptions(): Promise<FulfillmentOption[]> {
         const fulfillmentOptions: FulfillmentOption[] = []
-        // TODO: Add support for international shipping here        
 
         fulfillmentOptions.push({
             id: "AUS_PARCEL_REGULAR",
             name: "(Domestic) Parcel Post",
+            fulfillmentType: "domestic"
         })
 
         fulfillmentOptions.push({
             id: "AUS_PARCEL_EXPRESS",
             name: "(Domestic) Express Post",
+            fulfillmentType: "domestic"
         })
-    
+
+        fulfillmentOptions.push({
+            id: "INT_PARCEL_EXP_OWN_PACKAGING",
+            name: "(International) Express Post",
+            fulfillmentType: "international"
+        })
+
+        fulfillmentOptions.push({
+            id: "INT_PARCEL_STD_OWN_PACKAGING",
+            name: "(International) Standard Post",
+            fulfillmentType: "international"
+        })
+
+        fulfillmentOptions.push({
+            id: "INT_PARCEL_AIR_OWN_PACKAGING",
+            name: "(International) Economy Air",
+            fulfillmentType: "international"
+        })
 
         return fulfillmentOptions
     }
